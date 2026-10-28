@@ -1,6 +1,4 @@
-# aws-devops-delivery-pipeline
-“End-to-end DevOps pipeline on AWS: Terraform, Ansible, Jenkins, Docker, Argo CD, Prometheus and Grafana".
-cat > README.md << 'EOF'
+
 # AWS DevOps Delivery Pipeline
 
 An end-to-end DevOps project on AWS, built step by step.
