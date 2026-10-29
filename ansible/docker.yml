@@ -1,0 +1,25 @@
+
+---
+- name: Prepare the k3s server
+  hosts: k3s
+  become: true
+  tasks:
+    - name: Install Git and Docker
+      ansible.builtin.dnf:
+        name:
+          - git
+          - docker
+        state: present
+
+    - name: Start and enable Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add ec2-user to the docker group
+      ansible.builtin.user:
+        name: ec2-user
+        groups: docker
+        append: true
+

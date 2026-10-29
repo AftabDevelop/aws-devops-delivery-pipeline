@@ -1,0 +1,29 @@
+
+---
+- name: Install k3s on the server
+  hosts: k3s
+  become: true
+  tasks:
+    - name: Download the k3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/k3s-install.sh
+        mode: "0755"
+
+    - name: Install k3s
+      ansible.builtin.command: /tmp/k3s-install.sh
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait until the node is Ready
+      ansible.builtin.command: /usr/local/bin/k3s kubectl get nodes
+      register: nodes
+      until: "' Ready' in nodes.stdout"
+      retries: 15
+      delay: 10
+      changed_when: false
+
+    - name: Show the nodes
+      ansible.builtin.debug:
+        var: nodes.stdout_lines
+
