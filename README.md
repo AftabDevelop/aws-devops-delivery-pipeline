@@ -13,7 +13,7 @@ Terraform (AWS infra) -> Ansible (server config) -> GitHub -> Jenkins (test, bui
 - [x] Phase 1: Node.js app with /health and /metrics, Dockerfile, container run
 - [x] Phase 2: Terraform (key pair, security group, EC2 server for k3s)
 - [x] Phase 3: Ansible (Docker and k3s on the new server)
-- [ ] Phase 4: Jenkins pipeline
+- [x] Phase 4: Jenkins pipeline (build, smoke test, push image to Docker Hub)
 - [ ] Phase 5: Argo CD
 - [ ] Phase 6: Prometheus and Grafana
 
@@ -24,6 +24,7 @@ Terraform (AWS infra) -> Ansible (server config) -> GitHub -> Jenkins (test, bui
 ├── app/          Node.js app and Dockerfile
 ├── terraform/    Infrastructure as Code (AWS)
 ├── ansible/      Server configuration (inventory and playbooks)
+├── Jenkinsfile   CI pipeline
 └── README.md
 ```
 
@@ -79,7 +80,22 @@ Both playbooks are idempotent. Running them a second time reports `changed=0`, b
 
 Result: a single-node k3s cluster with CoreDNS, Traefik, metrics-server and local-path-provisioner running.
 
-### Notes
+## Phase 4: CI with Jenkins
+
+Jenkins runs on the control machine and builds the pipeline from the `Jenkinsfile` in this repository (Pipeline script from SCM). The Jenkins UI is reached through an SSH tunnel, so port 8080 is not exposed to the internet.
+
+Pipeline stages:
+
+1. **Checkout**: pulls the code from GitHub
+2. **Build Docker image**: builds the image from `app/`
+3. **Smoke test**: runs the container and calls `/health`; the pipeline fails if it does not respond
+4. **Push to Docker Hub**: pushes the image tagged with the build number and `latest`
+
+The Docker Hub access token is stored in the Jenkins credential store and is never written in the code. The pipeline logs out of Docker Hub at the end of every run.
+
+Result: [`aftab710/devops-app`](https://hub.docker.com/r/aftab710/devops-app) on Docker Hub, with the build number tag and `latest` pointing to the same image.
+
+## Notes
 
 - The Terraform state file (`terraform.tfstate`) and the `.terraform/` folder are not committed (see `.gitignore`).
-- No passwords, access keys or private keys are stored in this repository.
+- No passwords, access keys, tokens or private keys are stored in this repository.
