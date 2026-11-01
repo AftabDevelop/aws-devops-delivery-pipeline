@@ -1,6 +1,6 @@
 # AWS DevOps Delivery Pipeline
 
-An end-to-end DevOps project on AWS, built step by step. A small Node.js app is containerized, and the infrastructure, configuration, CI/CD, deployment and monitoring are automated with Terraform, Ansible, Jenkins, Argo CD, Prometheus and Grafana.
+An end-to-end DevOps project on AWS, built step by step. A small Node.js app is containerized, and the infrastructure, configuration, CI, GitOps deployment and monitoring are automated with Terraform, Ansible, Jenkins, Argo CD, Prometheus and Grafana.
 
 ## Planned flow
 
@@ -14,17 +14,19 @@ Terraform (AWS infra) -> Ansible (server config) -> GitHub -> Jenkins (test, bui
 - [x] Phase 2: Terraform (key pair, security group, EC2 server for k3s)
 - [x] Phase 3: Ansible (Docker and k3s on the new server)
 - [x] Phase 4: Jenkins pipeline (build, smoke test, push image to Docker Hub)
-- [ ] Phase 5: Argo CD
+- [x] Phase 5: Argo CD (GitOps deployment on k3s)
 - [ ] Phase 6: Prometheus and Grafana
 
 ## Repository structure
 
 ```
 .
-├── app/          Node.js app and Dockerfile
-├── terraform/    Infrastructure as Code (AWS)
-├── ansible/      Server configuration (inventory and playbooks)
-├── Jenkinsfile   CI pipeline
+├── app/            Node.js app and Dockerfile
+├── terraform/      Infrastructure as Code (AWS)
+├── ansible/        Server configuration (inventory and playbooks)
+├── k8s/            Kubernetes manifests (Deployment and Service)
+├── argocd/         Argo CD Application
+├── Jenkinsfile     CI pipeline
 └── README.md
 ```
 
@@ -94,6 +96,28 @@ Pipeline stages:
 The Docker Hub access token is stored in the Jenkins credential store and is never written in the code. The pipeline logs out of Docker Hub at the end of every run.
 
 Result: [`aftab710/devops-app`](https://hub.docker.com/r/aftab710/devops-app) on Docker Hub, with the build number tag and `latest` pointing to the same image.
+
+## Phase 5: GitOps deployment with Argo CD
+
+Argo CD runs on the k3s cluster and keeps the cluster in sync with this repository.
+
+- `k8s/deployment.yaml`: Deployment with replicas, readiness and liveness probes on `/health`, and CPU and memory requests and limits. The image is pinned to a tag (not `latest`), so Git always shows exactly which version is running.
+- `k8s/service.yaml`: NodePort Service in front of the pods.
+- `argocd/application.yaml`: Argo CD Application that watches the `k8s/` folder on the `main` branch, with automated sync, prune and self-heal.
+
+```
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -f argocd/application.yaml
+kubectl get applications -n argocd
+```
+
+Verified behaviour:
+
+- Changing replicas in Git (2 to 3) is applied to the cluster automatically.
+- Scaling the Deployment by hand (to 5 replicas) is reverted by Argo CD within seconds (self-heal).
+- The application reports `Synced` and `Healthy`.
+
+Current limitation: the image tag in `k8s/deployment.yaml` is updated by hand after a Jenkins build. Automating this (Jenkins updating the tag in Git) is a planned improvement.
 
 ## Notes
 
