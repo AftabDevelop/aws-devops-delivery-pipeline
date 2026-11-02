@@ -1,0 +1,16 @@
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: devops-app
+  labels:
+    app: devops-app
+spec:
+  selector:
+    matchLabels:
+      app: devops-app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+
