@@ -2,7 +2,7 @@
 
 An end-to-end DevOps project on AWS, built step by step. A small Node.js app is containerized, and the infrastructure, configuration, CI, GitOps deployment and monitoring are automated with Terraform, Ansible, Jenkins, Argo CD, Prometheus and Grafana.
 
-## Planned flow
+## Flow
 
 ```
 Terraform (AWS infra) -> Ansible (server config) -> GitHub -> Jenkins (test, build, push image) -> Argo CD (deploy on Kubernetes) -> Prometheus + Grafana (monitoring)
@@ -15,7 +15,7 @@ Terraform (AWS infra) -> Ansible (server config) -> GitHub -> Jenkins (test, bui
 - [x] Phase 3: Ansible (Docker and k3s on the new server)
 - [x] Phase 4: Jenkins pipeline (build, smoke test, push image to Docker Hub)
 - [x] Phase 5: Argo CD (GitOps deployment on k3s)
-- [ ] Phase 6: Prometheus and Grafana
+- [x] Phase 6: Prometheus and Grafana (monitoring)
 
 ## Repository structure
 
@@ -24,8 +24,8 @@ Terraform (AWS infra) -> Ansible (server config) -> GitHub -> Jenkins (test, bui
 ├── app/            Node.js app and Dockerfile
 ├── terraform/      Infrastructure as Code (AWS)
 ├── ansible/        Server configuration (inventory and playbooks)
-├── k8s/            Kubernetes manifests (Deployment and Service)
-├── argocd/         Argo CD Application
+├── k8s/            Kubernetes manifests (Deployment, Service, ServiceMonitor)
+├── argocd/         Argo CD Applications (app and monitoring stack)
 ├── Jenkinsfile     CI pipeline
 └── README.md
 ```
@@ -117,7 +117,34 @@ Verified behaviour:
 - Scaling the Deployment by hand (to 5 replicas) is reverted by Argo CD within seconds (self-heal).
 - The application reports `Synced` and `Healthy`.
 
-Current limitation: the image tag in `k8s/deployment.yaml` is updated by hand after a Jenkins build. Automating this (Jenkins updating the tag in Git) is a planned improvement.
+## Phase 6: Monitoring with Prometheus and Grafana
+
+The monitoring stack is also deployed through Argo CD, as a Helm chart.
+
+- `argocd/monitoring.yaml`: Argo CD Application for the `kube-prometheus-stack` Helm chart (version pinned). The Helm values are kept in Git: Alertmanager is disabled, retention is 24 hours, Prometheus has a memory limit, and the control plane components that k3s does not expose (controller manager, scheduler, kube-proxy, etcd) are turned off.
+- `k8s/servicemonitor.yaml`: tells Prometheus to scrape `/metrics` from the app every 15 seconds. The Service has a matching label and a named port.
+
+```
+kubectl apply -f argocd/application.yaml
+kubectl apply -f argocd/monitoring.yaml
+kubectl get pods -n monitoring
+```
+
+Grafana is not exposed to the internet. It is reached through SSH tunnels (laptop to control machine to k3s server) and `kubectl port-forward`.
+
+Verified behaviour:
+
+- Prometheus reports `up == 1` for all three app pods (`up{job="devops-app"}`).
+- The custom metric `http_requests_total` is visible in Grafana, for example with `sum(rate(http_requests_total{job="devops-app"}[1m])) by (route)`.
+- The request rate on `/health` is about 0.9 requests per second, which comes from the Kubernetes probes of the three pods. The rate on `/metrics` is about 0.2 requests per second, which is the Prometheus scrape interval.
+- Each pod uses roughly 25 MB of memory and about 0.003 CPU cores.
+
+## Limitations and next steps
+
+- The image tag in `k8s/deployment.yaml` is updated by hand after a Jenkins build. A next step is to let Jenkins update the tag in Git, so CI and CD form one loop.
+- The Grafana dashboard was built in the Grafana UI and is not stored in Git yet. It can be provisioned from a ConfigMap.
+- The k3s server (4 GiB RAM) is tight with Argo CD and the monitoring stack together. A larger instance type can be set in Terraform.
+- The Terraform state is local to the control machine. A remote state in S3 would be safer.
 
 ## Notes
 
